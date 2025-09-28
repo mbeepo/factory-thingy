@@ -27,7 +27,9 @@
             llvmPackages.bintools
             rustup
             wayland-protocols
-            wayland 
+            wayland
+            libxkbcommon
+            libGL
           ];
 
           RUSTC_VERSION = overrides.toolchain.channel;
