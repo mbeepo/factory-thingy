@@ -1,4 +1,6 @@
-use crate::{pipeline::{recipe::{CombinerRecipe, ProducerRecipe, Recipe, SplitterRecipe, TransformerRecipe}, IoPort, PipelineId, PortStatus}, ItemType};
+use std::fmt::Debug;
+
+use crate::{pipeline::{recipe::{CombinatorRecipe, ProducerRecipe, Recipe, SeparatorRecipe, TransformerRecipe}, IoPort, PipelineId, PortStatus}, ItemType};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MachinePushError {
@@ -7,55 +9,53 @@ pub enum MachinePushError {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum MachineLinkError {
+pub enum MachineBindError {
     NoFreeOutputs,
     NoFreeInputs,
     InputDoesNotExist,
     OutputDoesNotExist,
+    InvalidInput,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MachineKind {
+    Producer,
+    Transformer,
+    Combinator,
+    Separator,
+    Storage,
 }
 
 #[derive(Clone, Debug)]
-pub enum Machine {
-    Producer(Producer),
-    Transformer(Transformer),
-    Combiner(Combiner),
-    Splitter(Splitter),
-    Storage(Storage),
+pub struct Machine {
+    pub kind: MachineKind,
+    recipe: Recipe,
+    input_ports: [Option<IoPort>; 4],
+    output_ports: [Option<IoPort>; 4],
+    outputs: [Option<PipelineId>; 4],
 }
 
 impl Machine {
-    pub fn new(recipe: Recipe) -> Self {
-        match recipe {
-            Recipe::Producer(r) => Self::Producer(Producer::new(r)),
-            Recipe::Transformer(r) => Self::Transformer(Transformer::new(r)),
-            Recipe::Combiner(r) => Self::Combiner(Combiner::new(r)),
-            Recipe::Splitter(r) => Self::Splitter(Splitter::new(r)),
-        }
-    }
-
-    pub fn new_storage(item_type: ItemType) -> Self {
-        Self::Storage(Storage::new(item_type))
-    }
-    
     pub fn tick(&mut self, ticks: u64) {
-        match self {
-            Self::Producer(inner) => inner.tick(ticks),
-            Self::Transformer(inner) => inner.tick(ticks),
-            Self::Combiner(inner) => inner.tick(ticks),
-            Self::Splitter(inner) => inner.tick(ticks),
-            Self::Storage(_) => {},
-        }
+        todo!()
     }
 
-    pub fn push_input(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
-        match self {
-            Self::Producer(inner) => inner.push(item_type, amount),
-            Self::Transformer(inner) => inner.push(item_type, amount),
-            Self::Combiner(inner) => inner.push(item_type, amount),
-            Self::Splitter(inner) => inner.push(item_type, amount),
-            Self::Storage(inner) => inner.push(item_type, amount),
-        }
+    pub fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
+        todo!()
     }
+
+    pub fn is_starter(&self) -> bool {
+        todo!()
+    }
+
+    pub fn get_output(&mut self) -> Result<MachineOutput, MachineBindError> {
+        todo!()
+    }
+
+    pub fn get_matching_input(&mut self, output_handle: &MachineOutput) -> Result<MachineInput, MachineBindError> {
+        todo!()
+    }
+
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -74,17 +74,17 @@ pub struct Transformer {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Combiner {
+pub struct Combinator {
     pub output: Option<PipelineId>,
-    pub recipe: CombinerRecipe,
+    pub recipe: CombinatorRecipe,
     pub input_ports: (IoPort, IoPort),
     pub output_port: IoPort,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Splitter {
+pub struct Separator {
     pub outputs: (Option<PipelineId>, Option<PipelineId>),
-    pub recipe: SplitterRecipe,
+    pub recipe: SeparatorRecipe,
     pub input_port: IoPort,
     pub output_ports: (IoPort, IoPort)
 }
@@ -112,18 +112,60 @@ impl ItemBuffer {
     }
 }
 
+pub struct MachineOutput<'a> {
+    pub id: &'a mut Option<PipelineId>,
+    pub port: &'a mut IoPort,
+    pub item_type: ItemType,
+}
+
+pub struct MachineInput<'a> {
+    pub port: &'a mut IoPort,
+}
+
+pub trait MachineTrait: Debug {
+    fn tick(&mut self, ticks: u64);
+    fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError>;
+    fn is_starter(&self) -> bool;
+    fn get_output(&mut self) -> Result<MachineOutput, MachineBindError>;
+    fn get_matching_input(&mut self, output_handle: &MachineOutput) -> Result<MachineInput, MachineBindError>;
+}
+
 impl Producer {
     pub fn new(recipe: ProducerRecipe) -> Self {
         let port = recipe.into_port();
         Self { output: None, recipe, output_port: port }
     }
+}
 
-    pub fn tick(&mut self, ticks: u64) {
+impl MachineTrait for Producer {
+    fn tick(&mut self, ticks: u64) {
         
     }
 
-    pub fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
+    fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
         Err(MachinePushError::InvalidInput)
+    }
+
+    fn is_starter(&self) -> bool {
+        true
+    }
+    
+    fn get_output(&mut self) -> Result<MachineOutput, MachineBindError> {
+        if self.output_port.is_free() {
+            Ok(MachineOutput { id: &mut self.output, port: &mut self.output_port, item_type: self.recipe.output })
+        } else {
+            return Err(MachineBindError::NoFreeOutputs)
+        }
+    }
+
+    fn get_matching_input(&mut self, output_handle: &MachineOutput) -> Result<MachineInput, MachineBindError> {
+        return Err(MachineBindError::NoFreeInputs)
+    }
+}
+
+impl From<ProducerRecipe> for Producer {
+    fn from(value: ProducerRecipe) -> Self {
+        Self { recipe: value, output: None, output_port: value.output.into() }
     }
 }
 
@@ -132,43 +174,135 @@ impl Transformer {
         let ports = recipe.into_ports();
         Self { output: None, recipe, input_port: ports.input, output_port: ports.output }
     }
+}
 
-    pub fn tick(&mut self, ticks: u64) {
+impl MachineTrait for Transformer {
+    fn tick(&mut self, ticks: u64) {
         
     }
 
-    pub fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
+    fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
         Ok(())
+    }
+
+    fn is_starter(&self) -> bool {
+        false
+    }
+
+    fn get_output(&mut self) -> Result<MachineOutput, MachineBindError> {
+        if self.output_port.is_free() {
+            Ok(MachineOutput { id: &mut self.output, port: &mut self.output_port, item_type: self.recipe.output })
+        } else {
+            return Err(MachineBindError::NoFreeOutputs)
+        }
+    }
+
+    fn get_matching_input(&mut self, output_handle: &MachineOutput) -> Result<MachineInput, MachineBindError> {
+        if self.input_port.is_free() {
+            if output_handle.item_type == self.input_port.item_type {
+                Ok(MachineInput { port: &mut self.input_port })
+            } else {
+                Err(MachineBindError::InvalidInput)
+            }
+        } else {
+            Err(MachineBindError::NoFreeInputs)
+        }
     }
 }
 
-impl Combiner {
-    pub fn new(recipe: CombinerRecipe) -> Self {
+impl From<TransformerRecipe> for Transformer {
+    fn from(value: TransformerRecipe) -> Self {
+        Self { recipe: value, output: None, input_port: value.input.into(), output_port: value.output.into() }
+    }
+}
+
+impl Combinator {
+    pub fn new(recipe: CombinatorRecipe) -> Self {
         let ports = recipe.into_ports();
         Self { output: None, recipe, input_ports: ports.inputs, output_port: ports.output }
     }
+}
 
-    pub fn tick(&mut self, ticks: u64) {
+impl MachineTrait for Combinator {
+    fn tick(&mut self, ticks: u64) {
         
     }
 
-    pub fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
+    fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
         Ok(())
+    }
+
+    fn is_starter(&self) -> bool {
+        false
+    }
+
+    fn get_output(&mut self) -> Result<MachineOutput, MachineBindError> {
+        if self.output_port.is_free() {
+            Ok(MachineOutput { id: &mut self.output, port: &mut self.output_port, item_type: self.recipe.output })
+        } else { 
+            return Err(MachineBindError::NoFreeOutputs)
+        }
+    }
+
+    fn get_matching_input(&mut self, output_handle: &MachineOutput) -> Result<MachineInput, MachineBindError> {
+        if self.input_ports.0.is_free() && self.input_ports.0.item_type == output_handle.item_type {
+            return Ok(MachineInput { port: &mut self.input_ports.0 })
+        }
+        
+        if self.input_ports.1.is_free() && self.input_ports.1.item_type == output_handle.item_type {
+            return Ok(MachineInput { port: &mut self.input_ports.1 })
+        }
+
+        return Err(MachineBindError::NoFreeInputs)
     }
 }
 
-impl Splitter {
-    pub fn new(recipe: SplitterRecipe) -> Self {
+impl From<CombinatorRecipe> for Combinator {
+    fn from(value: CombinatorRecipe) -> Self {
+        Self { recipe: value, output: None, input_ports: (value.inputs.0.into(), value.inputs.1.into()), output_port: value.output.into() }
+    }
+}
+
+impl Separator {
+    pub fn new(recipe: SeparatorRecipe) -> Self {
         let ports = recipe.into_ports();
         Self { outputs: (None, None), recipe, input_port: ports.input, output_ports: ports.outputs }
     }
+}
 
-    pub fn tick(&mut self, ticks: u64) {
+impl MachineTrait for Separator {
+    fn tick(&mut self, ticks: u64) {
         
     }
 
-    pub fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
+    fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
         Ok(())
+    }
+
+    fn is_starter(&self) -> bool {
+        false
+    }
+
+    fn get_output(&mut self) -> Result<MachineOutput, MachineBindError> {
+        match self.outputs {
+            (None, _) => Ok(MachineOutput { id: &mut self.outputs.0, port: &mut self.output_ports.0, item_type: self.recipe.outputs.0 }),
+            (_, None) => Ok(MachineOutput { id: &mut self.outputs.1, port: &mut self.output_ports.1, item_type: self.recipe.outputs.1 }),
+            _ => return Err(MachineBindError::NoFreeOutputs),
+        }
+    }
+
+    fn get_matching_input(&mut self, output_handle: &MachineOutput) -> Result<MachineInput, MachineBindError> {
+        if self.input_port.is_free() && self.input_port.item_type == output_handle.item_type{
+            Ok(MachineInput { port: &mut self.input_port })
+        } else {
+            return Err(MachineBindError::NoFreeInputs)
+        }
+    }
+}
+
+impl From<SeparatorRecipe> for Separator {
+    fn from(value: SeparatorRecipe) -> Self {
+        Self { recipe: value, outputs: (None, None), input_port: value.input.into(), output_ports: (value.outputs.0.into(), value.outputs.1.into()) }
     }
 }
 
@@ -176,8 +310,30 @@ impl Storage {
     pub fn new(item_type: ItemType) -> Self {
         Self { input_port: IoPort::with_capacity(item_type, 1000) }
     }
+}
 
-    pub fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
+impl MachineTrait for Storage {
+    fn tick(&mut self, ticks: u64) {
+        
+    }
+
+    fn push(&mut self, item_type: ItemType, amount: u64) -> Result<(), MachinePushError> {
         Ok(())
+    }
+
+    fn is_starter(&self) -> bool {
+        false
+    }
+
+    fn get_output(&mut self) -> Result<MachineOutput, MachineBindError> {
+        return Err(MachineBindError::NoFreeOutputs)
+    }
+
+    fn get_matching_input(&mut self, output: &MachineOutput) -> Result<MachineInput, MachineBindError> {
+        if self.input_port.is_free() && self.input_port.item_type == output.item_type{
+            Ok(MachineInput { port: &mut self.input_port })
+        } else {
+            return Err(MachineBindError::NoFreeInputs)
+        }
     }
 }

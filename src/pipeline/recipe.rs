@@ -20,14 +20,14 @@ impl From<TransformerRecipe> for Recipe {
     }
 }
 
-impl From<CombinerRecipe> for Recipe {
-    fn from(value: CombinerRecipe) -> Self {
+impl From<CombinatorRecipe> for Recipe {
+    fn from(value: CombinatorRecipe) -> Self {
         Self::Combiner(value)
     }
 }
 
-impl From<SplitterRecipe> for Recipe {
-    fn from(value: SplitterRecipe) -> Self {
+impl From<SeparatorRecipe> for Recipe {
+    fn from(value: SeparatorRecipe) -> Self {
         Self::Splitter(value)
     }
 }
@@ -63,7 +63,7 @@ impl TransformerRecipe {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct CombinerRecipe {
+pub struct CombinatorRecipe {
     pub ticks: u64,
     pub inputs: (ItemType, ItemType),
     pub output: ItemType,
@@ -74,14 +74,14 @@ pub struct CombinerPorts {
     pub output: IoPort,
 }
 
-impl CombinerRecipe {
+impl CombinatorRecipe {
     pub fn into_ports(&self) -> CombinerPorts {
         CombinerPorts { inputs: (self.inputs.0.into(), self.inputs.1.into()), output: self.output.into() }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SplitterRecipe {
+pub struct SeparatorRecipe {
     pub ticks: u64,
     pub input: ItemType,
     pub outputs: (ItemType, ItemType),
@@ -92,7 +92,7 @@ pub struct SplitterPorts {
     pub outputs: (IoPort, IoPort),
 }
 
-impl SplitterRecipe {
+impl SeparatorRecipe {
     pub fn into_ports(&self) -> SplitterPorts {
         SplitterPorts { input: self.input.into(), outputs: (self.outputs.0.into(), self.outputs.1.into()) }
     }
@@ -107,11 +107,11 @@ pub struct TransformerRecipes {
 }
 
 pub struct CombinerRecipes {
-    recipes: Vec<CombinerRecipe>,
+    recipes: Vec<CombinatorRecipe>,
 }
 
 pub struct SplitterRecipes {
-    recipes: Vec<SplitterRecipe>,
+    recipes: Vec<SeparatorRecipe>,
 }
 
 impl ProducerRecipes {
@@ -143,13 +143,13 @@ impl TransformerRecipes {
 impl CombinerRecipes {
     pub fn init() -> Self {
         Self { recipes: vec![
-            CombinerRecipe { ticks: 60, inputs: (ItemType::Input, ItemType::Output), output: ItemType::Transformer },
-            CombinerRecipe { ticks: 60, inputs: (ItemType::Transformer, ItemType::Input), output: ItemType::Combiner },
-            CombinerRecipe { ticks: 60, inputs: (ItemType::Transformer, ItemType::Output), output: ItemType::Splitter },
+            CombinatorRecipe { ticks: 60, inputs: (ItemType::Input, ItemType::Output), output: ItemType::Transformer },
+            CombinatorRecipe { ticks: 60, inputs: (ItemType::Transformer, ItemType::Input), output: ItemType::Combinator },
+            CombinatorRecipe { ticks: 60, inputs: (ItemType::Transformer, ItemType::Output), output: ItemType::Separator },
         ] }
     }
 
-    pub fn get(&self, output: ItemType) -> Option<CombinerRecipe> {
+    pub fn get(&self, output: ItemType) -> Option<CombinatorRecipe> {
         self.recipes.iter().find_map(|e| { if e.output == output { Some(*e) } else { None }})
     }
 }

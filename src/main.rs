@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::pipeline::{machine::Machine, recipe::{CombinerRecipes, ProducerRecipes, TransformerRecipes}, Pipeline};
+use crate::pipeline::{machine::{MachineKind, Producer, Storage, Transformer}, recipe::{CombinerRecipes, ProducerRecipes, TransformerRecipes}, Pipeline};
 
 mod pipeline;
 
@@ -8,8 +8,8 @@ mod pipeline;
 enum ItemType {
     Producer,
     Transformer,
-    Combiner,
-    Splitter,
+    Combinator,
+    Separator,
     Storage,
     Input,
     Output,
@@ -49,9 +49,9 @@ fn main() -> eframe::Result {
     let mut factory: Vec<pipeline::Pipeline> = Vec::with_capacity(4);
     {
         let mut pipeline1 = Pipeline::with_capacity(3);
-        let producer = pipeline1.push(Machine::new(producer_recipes.get(ItemType::Output).unwrap().into()));
-        let transformer = pipeline1.push(Machine::new(transformer_recipes.get(ItemType::Producer).unwrap().into()));
-        let storage = pipeline1.push(Machine::new_storage(ItemType::Producer));
+        let producer = pipeline1.push(Box::<Producer>::new(producer_recipes.get(ItemType::Output).unwrap().into()));
+        let transformer = pipeline1.push(Box::<Transformer>::new(transformer_recipes.get(ItemType::Producer).unwrap().into()));
+        let storage = pipeline1.push(Box::new(Storage::new(ItemType::Producer)));
 
         pipeline1.bind_output(producer, transformer).unwrap();
         pipeline1.bind_output(transformer, storage).unwrap();
