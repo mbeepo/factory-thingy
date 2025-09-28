@@ -61,6 +61,11 @@ pub struct Pipeline {
     pub next_id: PipelineId,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PipelineError {
+    InvalidId,
+}
+
 impl Pipeline {
     pub fn new() -> Self {
         Self { inner: HashMap::with_capacity(3), next_id: PipelineId::new() }
@@ -119,16 +124,21 @@ impl Pipeline {
             dest: PipelineId,
         }
 
-        let mut complete: Vec<Output> = Vec::with_capacity(2);
+        let mut outputs: Vec<Output> = Vec::with_capacity(2);
         for machine in self.inner.values_mut() {
-            if machine.inner.tick() == CraftStatus::Complete {
+            let mut complete = CraftStatus::Incomplete;
+            for _ in 0..machine.inner.mult {
+                complete |= machine.inner.tick();
+            }
+
+            if complete == CraftStatus::Complete {
                 if let Some(output_id) = machine.inner.output_id {
-                    complete.push(Output { src: machine.id, dest: output_id });
+                    outputs.push(Output { src: machine.id, dest: output_id });
                 }
             }
         }
 
-        for Output { src, dest} in complete {
+        for Output { src, dest} in outputs {
             let [src, dest] = self.inner.get_disjoint_mut([&src, &dest]);
 
             match (src, dest) {
@@ -147,6 +157,12 @@ impl Pipeline {
                 _ => panic!("They were here just a moment ago...")
             }
         }
+    }
+
+    pub fn set_mult(&mut self, machine: &PipelineId, mult: u64) -> Result<(), PipelineError> {
+        self.inner.get_mut(machine).ok_or(PipelineError::InvalidId)?.inner.mult = mult;
+
+        Ok(())
     }
 
     fn next_id(&mut self) -> PipelineId {

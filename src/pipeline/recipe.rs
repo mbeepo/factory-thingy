@@ -68,17 +68,17 @@ impl Recipes {
         self.inner.iter().find_map(|e| { if e.machine_kind == MachineKind::Transformer && e.outputs[0].map(|inner| inner.item_type) == Some(output) { Some(*e) } else { None }})
     }
     
-    pub fn get_combinator(&self, inputs: (ItemType, ItemType), output: ItemType) -> Option<RecipeNew> {
+    pub fn get_combinator(&self, output: ItemType) -> Option<RecipeNew> {
         self.inner.iter().find_map(|e| {
             if e.machine_kind == MachineKind::Combinator
-            && (e.inputs[0].map(|inner| inner.item_type), e.inputs[1].map(|inner| inner.item_type)) == (Some(inputs.0), Some(inputs.1))
+            // && (e.inputs[0].map(|inner| inner.item_type), e.inputs[1].map(|inner| inner.item_type)) == (Some(inputs.0), Some(inputs.1))
             && e.outputs[0].map(|inner| inner.item_type) == Some(output) { Some(*e) } else { None }})
     }
 
-    pub fn get_separator(&self, input: ItemType, outputs: (ItemType, ItemType)) -> Option<RecipeNew> {
+    pub fn get_separator(&self, outputs: (ItemType, ItemType)) -> Option<RecipeNew> {
         self.inner.iter().find_map(|e| {
             if e.machine_kind == MachineKind::Combinator
-            && (e.outputs[0].map(|inner| inner.item_type), e.outputs[1].map(|inner| inner.item_type)) == (Some(outputs.0), Some(outputs.1))
-            && e.inputs[0].map(|inner| inner.item_type) == Some(input) { Some(*e) } else { None }})
+            && (e.outputs[0].map(|inner| inner.item_type), e.outputs[1].map(|inner| inner.item_type)) == (Some(outputs.0), Some(outputs.1)) { Some(*e) } else { None }})
+            // && e.inputs[0].map(|inner| inner.item_type) == Some(input) { Some(*e) } else { None }})
     }
 }

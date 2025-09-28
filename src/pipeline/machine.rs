@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, ops::{BitOr, BitOrAssign}};
 
 use crate::{pipeline::{recipe::{ItemStack, RecipeNew}, IoPort, PipelineId}, ItemType};
 
@@ -41,6 +41,24 @@ pub enum CraftStatus {
     Complete,
 }
 
+impl BitOr for CraftStatus {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        if self == CraftStatus::Complete || rhs == CraftStatus::Complete {
+            CraftStatus::Complete
+        } else {
+            CraftStatus::Incomplete
+        }
+    }
+}
+
+impl BitOrAssign for CraftStatus {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Machine {
     pub kind: MachineKind,
@@ -49,6 +67,7 @@ pub struct Machine {
     status: MachineStatus,
     pub input_ports: [Option<IoPort>; 4],
     pub output_ports: [Option<IoPort>; 4],
+    pub mult: u64,
 }
 
 impl Machine {
@@ -71,7 +90,6 @@ impl Machine {
                 } else if self.recipe.ticks == 0 {
                     CraftStatus::Complete  
                 } else {
-                    println!("Crafting for {} ticks", self.recipe.ticks);
                     self.status = MachineStatus::Working(self.recipe.ticks - 1);
                     CraftStatus::Incomplete
                 }
@@ -223,6 +241,7 @@ impl Machine {
             status: MachineStatus::LacksInput,
             input_ports: [Some(item_type.into()), None, None, None],
             output_ports: [None; 4],
+            mult: 1,
         }
     }
 }
@@ -241,6 +260,7 @@ impl From<RecipeNew> for Machine {
             status: MachineStatus::LacksInput,
             input_ports,
             output_ports,
+            mult: 1,
         }
     }
 }

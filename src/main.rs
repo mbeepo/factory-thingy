@@ -16,7 +16,8 @@ enum ItemType {
 }
 
 
-fn main() -> eframe::Result {
+// fn main() -> eframe::Result {
+fn main() {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
         ..Default::default()
@@ -28,25 +29,34 @@ fn main() -> eframe::Result {
     let mut factory: Vec<pipeline::Pipeline> = Vec::with_capacity(4);
     {
         let mut pipeline1 = Pipeline::with_capacity(3);
-        let producer = pipeline1.push(recipes.get_producer(ItemType::Output).unwrap().into());
-        let transformer = pipeline1.push(recipes.get_transformer(ItemType::Producer).unwrap().into());
-        let storage = pipeline1.push(Machine::new_storage(ItemType::Producer));
+        let producer1 = pipeline1.push(recipes.get_producer(ItemType::Output).unwrap().into());
+        let producer2 = pipeline1.push(recipes.get_producer(ItemType::Input).unwrap().into());
+        let producer3 = pipeline1.push(recipes.get_producer(ItemType::Input).unwrap().into());
+        let combinator1 = pipeline1.push(recipes.get_combinator(ItemType::Transformer).unwrap().into());
+        let combinator2 = pipeline1.push(recipes.get_combinator(ItemType::Combinator).unwrap().into());
 
-        pipeline1.bind_output(producer, transformer).unwrap();
-        pipeline1.bind_output(transformer, storage).unwrap();
+        pipeline1.bind_output(producer1, combinator1).unwrap();
+        pipeline1.bind_output(producer2, combinator1).unwrap();
+        pipeline1.bind_output(combinator1, combinator2).unwrap();
+        pipeline1.bind_output(producer3, combinator2).unwrap();
+
+        pipeline1.set_mult(&producer1, 5).unwrap();
+        pipeline1.set_mult(&producer2, 5).unwrap();
+        pipeline1.set_mult(&producer3, 5).unwrap();
+        pipeline1.set_mult(&combinator1, 5).unwrap();
         
         factory.push(pipeline1);
     }
 
-    for i in 0..100 {
+    for i in 0..200 {
         println!("{i}");
         factory[0].tick();
     }
 
-    eframe::run_simple_native("beepo app", options, move |ctx, _frame| {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Beepo Factory");
-            ui.label("Under Construction :3");
-        });
-    })
+    // eframe::run_simple_native("beepo app", options, move |ctx, _frame| {
+    //     egui::CentralPanel::default().show(ctx, |ui| {
+    //         ui.heading("Beepo Factory");
+    //         ui.label("Under Construction :3");
+    //     });
+    // })
 }
