@@ -35,15 +35,18 @@ fn main() -> eframe::Result {
         pipeline1.bind_output(producer, transformer).unwrap();
         pipeline1.bind_output(transformer, storage).unwrap();
         
-        
         factory.push(pipeline1);
     }
 
+    for i in 0..100 {
+        println!("{i}");
+        factory[0].tick();
+    }
 
     eframe::run_simple_native("beepo app", options, move |ctx, _frame| {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Beepo Factory");
-            ui.label("In Construction :D");
+            ui.label("Under Construction :3");
         });
     })
 }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{pipeline::machine::{ItemBuffer, Machine, MachineBindError}, ItemType};
+use crate::{pipeline::machine::{CraftStatus, ItemBuffer, Machine, MachineBindError}, ItemType};
 
 pub mod recipe;
 pub mod machine;
@@ -59,42 +59,34 @@ impl PipelineId {
 pub struct Pipeline {
     pub inner: HashMap<PipelineId, PipelineSegment>,
     pub next_id: PipelineId,
-    starters: Vec<PipelineId>,
 }
 
 impl Pipeline {
     pub fn new() -> Self {
-        Self { inner: HashMap::with_capacity(3), next_id: PipelineId::new(), starters: Vec::with_capacity(1) }
+        Self { inner: HashMap::with_capacity(3), next_id: PipelineId::new() }
     }
 
     pub fn with_machine(machine: Machine) -> Self {
-        let starter = machine.is_starter();
         let mut next_id = PipelineId::new();
         let mut inner = HashMap::with_capacity(3);
         let id = next_id.inc();
         inner.insert(id, PipelineSegment::new(id, machine));
 
-        if starter {
-            Self { inner, next_id, starters: vec![id] }
-        } else {
-            Self { inner, next_id, starters: Vec::with_capacity(1) }
-        }
+        Self { inner, next_id }
     }
 
     pub fn with_machines(machines: Vec<Machine>) -> Self {
         let mut next_id = PipelineId::new();
-        let mut starters: Vec<PipelineId> = Vec::with_capacity(1);
         let inner = HashMap::from_iter(machines.into_iter().map(|m| {
             let id = next_id.inc();
-            if m.is_starter() { starters.push(id) };
             (id, PipelineSegment::new(id, m))
         }));
 
-        Self { inner, next_id, starters }
+        Self { inner, next_id }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { inner: HashMap::with_capacity(capacity), next_id: PipelineId::new(), starters: Vec::with_capacity(1) }
+        Self { inner: HashMap::with_capacity(capacity), next_id: PipelineId::new() }
     }
 
     pub fn push(&mut self, machine: Machine) -> PipelineId {
@@ -109,9 +101,9 @@ impl Pipeline {
         let Some(input) = src else { Err(MachineBindError::InputDoesNotExist)? };
         let Some(output) = dest else { Err(MachineBindError::OutputDoesNotExist)? };
 
-        for item_type in input.inner.outputs() {
-            let output_data = input.inner.get_output(item_type)?;
-            let input_data = output.inner.get_input(item_type)?;
+        for item_stack in input.inner.outputs() {
+            let output_data = input.inner.get_output(item_stack.item_type)?;
+            let input_data = output.inner.get_input(item_stack.item_type)?;
 
             *output_data.id = Some(dest_id);
             output_data.port.expect("Invalid output port").status = PortStatus::Taken;
@@ -122,18 +114,38 @@ impl Pipeline {
     }
 
     pub fn tick(&mut self) {
-        let mut to_prune: Vec<PipelineId> = Vec::new();
+        struct Output {
+            src: PipelineId,
+            dest: PipelineId,
+        }
 
-        for &producer in &self.starters { 
-            if let Some(producer) = self.inner.get_mut(&producer) {
-                producer.inner.tick();
-            } else {
-                to_prune.push(producer);
+        let mut complete: Vec<Output> = Vec::with_capacity(2);
+        for machine in self.inner.values_mut() {
+            if machine.inner.tick() == CraftStatus::Complete {
+                if let Some(output_id) = machine.inner.output_id {
+                    complete.push(Output { src: machine.id, dest: output_id });
+                }
             }
         }
 
-        if to_prune.len() > 0 {
-            self.starters = self.starters.iter().copied().filter(|p| !to_prune.contains(&p)).collect();
+        for Output { src, dest} in complete {
+            let [src, dest] = self.inner.get_disjoint_mut([&src, &dest]);
+
+            match (src, dest) {
+                (Some(src), Some(dest)) => {
+                    for port in &mut src.inner.output_ports {
+                        if let Some(port) = port {
+                            let dest_port = dest.inner.input_ports.iter_mut().filter(|p| p.map(|p| p.item_type == port.item_type).unwrap_or(false)).next();
+                            if let Some(Some(dest_port)) = dest_port {
+                                let change = dest_port.buffer.remaining().min(port.buffer.current);
+                                dest_port.buffer.current += change;
+                                port.buffer.current -= change;
+                            }
+                        }
+                    }
+                },
+                _ => panic!("They were here just a moment ago...")
+            }
         }
     }
 
