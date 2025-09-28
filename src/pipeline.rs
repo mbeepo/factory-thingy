@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{pipeline::machine::{ItemBuffer, MachineKind, MachineBindError, MachineTrait}, CentralStorage, ItemType};
+use crate::{pipeline::machine::{ItemBuffer, Machine, MachineBindError}, ItemType};
 
 pub mod recipe;
 pub mod machine;
@@ -67,7 +67,7 @@ impl Pipeline {
         Self { inner: HashMap::with_capacity(3), next_id: PipelineId::new(), starters: Vec::with_capacity(1) }
     }
 
-    pub fn with_machine(machine: Box<dyn MachineTrait>) -> Self {
+    pub fn with_machine(machine: Machine) -> Self {
         let starter = machine.is_starter();
         let mut next_id = PipelineId::new();
         let mut inner = HashMap::with_capacity(3);
@@ -81,7 +81,7 @@ impl Pipeline {
         }
     }
 
-    pub fn with_machines(machines: Vec<Box<dyn MachineTrait>>) -> Self {
+    pub fn with_machines(machines: Vec<Machine>) -> Self {
         let mut next_id = PipelineId::new();
         let mut starters: Vec<PipelineId> = Vec::with_capacity(1);
         let inner = HashMap::from_iter(machines.into_iter().map(|m| {
@@ -97,33 +97,36 @@ impl Pipeline {
         Self { inner: HashMap::with_capacity(capacity), next_id: PipelineId::new(), starters: Vec::with_capacity(1) }
     }
 
-    pub fn push(&mut self, machine: Box<dyn MachineTrait>) -> PipelineId {
+    pub fn push(&mut self, machine: Machine) -> PipelineId {
         let id = self.next_id();
         let segment = PipelineSegment::new(id, machine);
         self.inner.insert(id, segment);
         id
     }
 
-    pub fn bind_output(&mut self, input_id: PipelineId, output_id: PipelineId) -> Result<(), MachineBindError> {
+    pub fn bind_output(&mut self, src_id: PipelineId, dest_id: PipelineId) -> Result<(), MachineBindError> {
+        let [src, dest] = self.inner.get_disjoint_mut([&src_id, &dest_id]);
+        let Some(input) = src else { Err(MachineBindError::InputDoesNotExist)? };
+        let Some(output) = dest else { Err(MachineBindError::OutputDoesNotExist)? };
 
-        let [input, output] = self.inner.get_disjoint_mut([&input_id, &output_id]);
-        println!("{:?}\n{:?}", input, output);
-        let Some(input) = input else { Err(MachineBindError::InputDoesNotExist)? };
-        let Some(output) = output else { Err(MachineBindError::OutputDoesNotExist)? };
+        for item_type in input.inner.outputs() {
+            let output_data = input.inner.get_output(item_type)?;
+            let input_data = output.inner.get_input(item_type)?;
 
-        let output_data = input.inner.get_output()?;
-        let input_data = output.inner.get_matching_input(&output_data);
+            *output_data.id = Some(dest_id);
+            output_data.port.expect("Invalid output port").status = PortStatus::Taken;
+            input_data.port.expect("Invalid input port").status = PortStatus::Taken;
+        }
 
         Ok(())
     }
 
-    pub fn tick(&mut self, ticks: u64) -> CentralStorage {
+    pub fn tick(&mut self) {
         let mut to_prune: Vec<PipelineId> = Vec::new();
-        let mut central_storage = CentralStorage::default();
 
         for &producer in &self.starters { 
             if let Some(producer) = self.inner.get_mut(&producer) {
-                producer.inner.tick(ticks);
+                producer.inner.tick();
             } else {
                 to_prune.push(producer);
             }
@@ -132,8 +135,6 @@ impl Pipeline {
         if to_prune.len() > 0 {
             self.starters = self.starters.iter().copied().filter(|p| !to_prune.contains(&p)).collect();
         }
-
-        central_storage
     }
 
     fn next_id(&mut self) -> PipelineId {
@@ -144,11 +145,11 @@ impl Pipeline {
 #[derive(Debug)]
 pub struct PipelineSegment {
     id: PipelineId,
-    inner: Box<dyn MachineTrait>,
+    inner: Machine,
 }
 
 impl PipelineSegment {
-    pub fn new(id: PipelineId, inner: Box<dyn MachineTrait>) -> Self {
+    pub fn new(id: PipelineId, inner: Machine) -> Self {
         Self { id, inner: inner }
     }
 }

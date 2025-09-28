@@ -1,155 +1,72 @@
-use crate::{pipeline::IoPort, ItemType};
+use crate::{pipeline::{machine::MachineKind, IoPort}, ItemType};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Recipe {
-    Producer(ProducerRecipe),
-    Transformer(TransformerRecipe),
-    Combiner(CombinerRecipe),
-    Splitter(SplitterRecipe),
-}
-
-impl From<ProducerRecipe> for Recipe {
-    fn from(value: ProducerRecipe) -> Self {
-        Self::Producer(value)
-    }
-}
-
-impl From<TransformerRecipe> for Recipe {
-    fn from(value: TransformerRecipe) -> Self {
-        Self::Transformer(value)
-    }
-}
-
-impl From<CombinatorRecipe> for Recipe {
-    fn from(value: CombinatorRecipe) -> Self {
-        Self::Combiner(value)
-    }
-}
-
-impl From<SeparatorRecipe> for Recipe {
-    fn from(value: SeparatorRecipe) -> Self {
-        Self::Splitter(value)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ProducerRecipe {
+pub struct RecipeNew {
+    pub machine_kind: MachineKind,
     pub ticks: u64,
-    pub output: ItemType,
+    pub inputs: [Option<ItemType>; 4],
+    pub outputs: [Option<ItemType>; 4],
 }
 
-impl ProducerRecipe {
-    pub fn into_port(&self) -> IoPort {
-        self.output.into()
+impl RecipeNew {
+    pub fn producer_recipe(output: ItemType, ticks: u64) -> Self {
+        Self { machine_kind: MachineKind::Producer, ticks, inputs: [None; 4], outputs: [Some(output), None, None, None] }
+    }
+
+    pub fn transformer_recipe(input: ItemType, output: ItemType, ticks: u64) -> Self {
+        Self { machine_kind: MachineKind::Transformer, ticks, inputs: [Some(input), None, None, None], outputs: [Some(output), None, None, None] }
+    }
+
+    pub fn combinator_recipe(inputs: (ItemType, ItemType), output: ItemType, ticks: u64) -> Self {
+        Self { machine_kind: MachineKind::Combinator, ticks, inputs: [Some(inputs.0), Some(inputs.1), None, None], outputs: [Some(output), None, None, None] }
+    }
+
+    pub fn separator_recipe(input: ItemType, outputs: (ItemType, ItemType), ticks: u64) -> Self {
+        Self { machine_kind: MachineKind::Separator, ticks, inputs: [Some(input), None, None, None], outputs: [Some(outputs.0), Some(outputs.1), None, None] }
+    }
+
+    pub fn storage_recipe() -> Self {
+        Self { machine_kind: MachineKind::Storage, ticks: 0, inputs: [None; 4], outputs: [None; 4] }
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct TransformerRecipe {
-    pub ticks: u64,
-    pub input: ItemType,
-    pub output: ItemType,
+#[derive(Clone, Debug)]
+pub struct Recipes {
+    pub inner: Vec<RecipeNew>,
 }
 
-pub struct TransformerPorts {
-    pub input: IoPort,
-    pub output: IoPort,
-}
-
-impl TransformerRecipe {
-    pub fn into_ports(&self) -> TransformerPorts {
-        TransformerPorts { input: self.input.into(), output: self.output.into() }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct CombinatorRecipe {
-    pub ticks: u64,
-    pub inputs: (ItemType, ItemType),
-    pub output: ItemType,
-}
-
-pub struct CombinerPorts {
-    pub inputs: (IoPort, IoPort),
-    pub output: IoPort,
-}
-
-impl CombinatorRecipe {
-    pub fn into_ports(&self) -> CombinerPorts {
-        CombinerPorts { inputs: (self.inputs.0.into(), self.inputs.1.into()), output: self.output.into() }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SeparatorRecipe {
-    pub ticks: u64,
-    pub input: ItemType,
-    pub outputs: (ItemType, ItemType),
-}
-
-pub struct SplitterPorts {
-    pub input: IoPort,
-    pub outputs: (IoPort, IoPort),
-}
-
-impl SeparatorRecipe {
-    pub fn into_ports(&self) -> SplitterPorts {
-        SplitterPorts { input: self.input.into(), outputs: (self.outputs.0.into(), self.outputs.1.into()) }
-    }
-}
-
-pub struct ProducerRecipes {
-    recipes: Vec<ProducerRecipe>,
-}
-
-pub struct TransformerRecipes {
-    recipes: Vec<TransformerRecipe>,
-}
-
-pub struct CombinerRecipes {
-    recipes: Vec<CombinatorRecipe>,
-}
-
-pub struct SplitterRecipes {
-    recipes: Vec<SeparatorRecipe>,
-}
-
-impl ProducerRecipes {
+impl Recipes {
     pub fn init() -> Self {
-        Self { recipes: vec![
-            ProducerRecipe { ticks: 10, output: ItemType::Input },
-            ProducerRecipe { ticks: 10, output: ItemType::Output },
+        Self { inner: vec![
+            RecipeNew::producer_recipe(ItemType::Input, 10),
+            RecipeNew::producer_recipe(ItemType::Output, 10),
+            RecipeNew::transformer_recipe(ItemType::Input, ItemType::Storage, 20),
+            RecipeNew::transformer_recipe(ItemType::Output, ItemType::Producer, 20),
+            RecipeNew::combinator_recipe((ItemType::Input, ItemType::Output), ItemType::Transformer, 60),
+            RecipeNew::combinator_recipe((ItemType::Transformer, ItemType::Input), ItemType::Combinator, 60),
+            RecipeNew::combinator_recipe((ItemType::Transformer, ItemType::Output), ItemType::Separator, 60),
         ] }
     }
 
-    pub fn get(&self, output: ItemType) -> Option<ProducerRecipe> {
-        self.recipes.iter().find_map(|e| { if e.output == output { Some(*e) } else { None }})
-    }
-}
-
-impl TransformerRecipes {
-    pub fn init() -> Self {
-        Self { recipes: vec![
-            TransformerRecipe { ticks: 20, input: ItemType::Input, output: ItemType::Storage },
-            TransformerRecipe { ticks: 20, input: ItemType::Output, output: ItemType::Producer },
-        ] }
+    pub fn get_producer(&self, output: ItemType) -> Option<RecipeNew> {
+        self.inner.iter().find_map(|e| { if e.machine_kind == MachineKind::Producer && e.outputs[0] == Some(output) { Some(*e) } else { None }})
     }
 
-    pub fn get(&self, output: ItemType) -> Option<TransformerRecipe> {
-        self.recipes.iter().find_map(|e| { if e.output == output { Some(*e) } else { None }})
+    pub fn get_transformer(&self, output: ItemType) -> Option<RecipeNew> {
+        self.inner.iter().find_map(|e| { if e.machine_kind == MachineKind::Transformer && e.outputs[0] == Some(output) { Some(*e) } else { None }})
     }
-}
-
-impl CombinerRecipes {
-    pub fn init() -> Self {
-        Self { recipes: vec![
-            CombinatorRecipe { ticks: 60, inputs: (ItemType::Input, ItemType::Output), output: ItemType::Transformer },
-            CombinatorRecipe { ticks: 60, inputs: (ItemType::Transformer, ItemType::Input), output: ItemType::Combinator },
-            CombinatorRecipe { ticks: 60, inputs: (ItemType::Transformer, ItemType::Output), output: ItemType::Separator },
-        ] }
+    
+    pub fn get_combinator(&self, inputs: (ItemType, ItemType), output: ItemType) -> Option<RecipeNew> {
+        self.inner.iter().find_map(|e| {
+            if e.machine_kind == MachineKind::Combinator
+            && (e.inputs[0], e.inputs[1]) == (Some(inputs.0), Some(inputs.1))
+            && e.outputs[0] == Some(output) { Some(*e) } else { None }})
     }
 
-    pub fn get(&self, output: ItemType) -> Option<CombinatorRecipe> {
-        self.recipes.iter().find_map(|e| { if e.output == output { Some(*e) } else { None }})
+    pub fn get_separator(&self, input: ItemType, outputs: (ItemType, ItemType)) -> Option<RecipeNew> {
+        self.inner.iter().find_map(|e| {
+            if e.machine_kind == MachineKind::Combinator
+            && (e.outputs[0], e.outputs[1]) == (Some(outputs.0), Some(outputs.1))
+            && e.inputs[0] == Some(input) { Some(*e) } else { None }})
     }
 }
