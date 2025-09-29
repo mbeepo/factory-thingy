@@ -1,6 +1,7 @@
 use eframe::egui;
 
 use crate::pipeline::{machine::Machine, recipe::Recipes, Pipeline};
+use bevy::prelude::*;
 
 mod pipeline;
 
@@ -48,11 +49,7 @@ fn main() {
         factory.push(pipeline1);
     }
 
-    for i in 0..200 {
-        println!("{i}");
-        factory[0].tick();
-    }
-
+    App::new().run();
     // eframe::run_simple_native("beepo app", options, move |ctx, _frame| {
     //     egui::CentralPanel::default().show(ctx, |ui| {
     //         ui.heading("Beepo Factory");

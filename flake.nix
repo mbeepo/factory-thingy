@@ -17,6 +17,8 @@
           wayland
           libxkbcommon
           libGL
+          alsa-lib
+          libudev-zero
         ];
       in
       {
@@ -30,6 +32,8 @@
             wayland
             libxkbcommon
             libGL
+            alsa-lib
+            libudev-zero
           ];
 
           RUSTC_VERSION = overrides.toolchain.channel;

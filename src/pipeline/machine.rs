@@ -1,6 +1,9 @@
 use std::{fmt::Debug, ops::{BitOr, BitOrAssign}};
 
-use crate::{pipeline::{recipe::{ItemStack, RecipeNew}, IoPort, PipelineId}, ItemType};
+use bevy::ecs::component::Component;
+use bevy::prelude::*;
+
+use crate::{pipeline::{recipe::{ItemStack, Recipe}, IoPort, PipelineId}, ItemType};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MachinePushError {
@@ -17,7 +20,7 @@ pub enum MachineBindError {
     InvalidInput,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MachineKind {
     Producer,
     Transformer,
@@ -26,13 +29,14 @@ pub enum MachineKind {
     Storage,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MachineStatus {
     Working(u64),
     Full,
     LacksInput,
     Ready,
-    CraftFinished,
+    CraftsFinished(u64),
+    Idle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,15 +63,95 @@ impl BitOrAssign for CraftStatus {
     }
 }
 
+#[derive(Component, Clone, Debug)]
+#[relationship_target(relationship = MachineOutputNew)]
+pub struct MachineInputNew(Vec<Entity>);
+
+#[derive(Component, Clone, Debug)]
+#[relationship(relationship_target = MachineInputNew)]
+pub struct MachineOutputNew(Entity);
+
+#[derive(Component, Clone, Debug)]
+pub struct OutputBank(Vec<IoPort>);
+
+#[derive(Component, Clone, Debug)]
+pub struct MachineBuffer(Vec<IoPort>);
+
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Mult(u64);
+
 #[derive(Clone, Debug)]
 pub struct Machine {
     pub kind: MachineKind,
     pub output_id: Option<PipelineId>,
-    recipe: RecipeNew,
+    recipe: Recipe,
     status: MachineStatus,
     pub input_ports: [Option<IoPort>; 4],
     pub output_ports: [Option<IoPort>; 4],
     pub mult: u64,
+}
+
+pub fn tick_machines(mut machine_query: Query<(&Recipe, &mut MachineStatus, Option<&Mult>)>) {
+    for(recipe, mut status, maybe_mult) in &mut machine_query {
+        match *status {
+            MachineStatus::Working(ref mut ticks_remaining) => {
+                if let Some(mult) = maybe_mult {
+                    if mult.0 > *ticks_remaining {
+                        let full_crafts = (mult.0 - *ticks_remaining) % recipe.ticks;
+                        *ticks_remaining = (mult.0 - *ticks_remaining) / recipe.ticks;
+                        *status = MachineStatus::CraftsFinished(full_crafts);
+                    } else {
+                        *ticks_remaining -= mult.0;
+                    }
+                } else {
+                    *ticks_remaining -= 1;
+
+                    if *ticks_remaining == 0 {
+                        *status = MachineStatus::CraftsFinished(1);
+                    }
+                }
+            },
+            MachineStatus::Ready => {
+                if let Some(mult) = maybe_mult {
+                    let full_crafts = mult.0 % recipe.ticks;
+                    *status = MachineStatus::CraftsFinished(full_crafts);
+                } else {
+                    *status = MachineStatus::Working(recipe.ticks - 1);
+                }
+            },
+            MachineStatus::LacksInput => {
+                *status = MachineStatus::Idle
+            },
+            _ => {},
+        }
+    }
+}
+
+pub fn try_craft_new(mut machine_query: Query<(&mut MachineBuffer, &mut OutputBank, &mut MachineStatus, &Recipe)>) {
+    for (mut buffer, mut outputs, mut status, recipe) in machine_query {
+        if let MachineStatus::CraftsFinished(num_crafts) = *status {
+        }
+    }
+}
+
+pub fn ready_craft(mut machine_query: Query<(&mut MachineBuffer, &mut MachineStatus, &Recipe)>) {
+    for (mut buffer, mut status, recipe) in machine_query {
+        let possible_crafts = {
+            let mut possible_crafts: Option<u64> = None;
+
+            for output in recipe.outputs {
+                if let Some(output) = output {
+                    let buffered = buffer.0.iter().fold(0, |acc, port| {
+                        if port.item_type == output.item_type {
+                            acc + port.buffer.current
+                        } else {
+                            acc
+                        }
+                    });
+                }
+            }
+        }
+    }
 }
 
 impl Machine {
@@ -237,7 +321,7 @@ impl Machine {
         Self {
             kind: MachineKind::Storage,
             output_id: None,
-            recipe: RecipeNew::storage_recipe(),
+            recipe: Recipe::storage_recipe(),
             status: MachineStatus::LacksInput,
             input_ports: [Some(item_type.into()), None, None, None],
             output_ports: [None; 4],
@@ -246,8 +330,8 @@ impl Machine {
     }
 }
 
-impl From<RecipeNew> for Machine {
-    fn from(value: RecipeNew) -> Self {
+impl From<Recipe> for Machine {
+    fn from(value: Recipe) -> Self {
         let mut input_ports = value.inputs.iter().map(|input| input.map(|item_stack| item_stack.item_type.into())).take(4);
         let input_ports = [input_ports.next().flatten(), input_ports.next().flatten(), input_ports.next().flatten(), input_ports.next().flatten()];
         let mut output_ports = value.outputs.iter().map(|output| output.map(|item_stack| item_stack.item_type.into())).take(4);
