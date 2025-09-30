@@ -134,10 +134,10 @@ pub fn try_craft_new(mut machine_query: Query<(&mut MachineBuffer, &mut OutputBa
     }
 }
 
-pub fn ready_craft(mut machine_query: Query<(&mut MachineBuffer, &mut MachineStatus, &Recipe)>) {
-    for (mut buffer, mut status, recipe) in machine_query {
+pub fn ready_craft(mut machine_query: Query<(&mut MachineBuffer, &mut MachineStatus, &Recipe, Option<&Mult>)>) {
+    for (mut buffer, mut status, recipe, mult) in machine_query {
         let possible_crafts = {
-            let mut possible_crafts: Option<u64> = None;
+            let mut possible_crafts = mult.unwrap_or(&Mult(1)).0;
 
             for output in recipe.outputs {
                 if let Some(output) = output {
@@ -148,8 +148,18 @@ pub fn ready_craft(mut machine_query: Query<(&mut MachineBuffer, &mut MachineSta
                             acc
                         }
                     });
+
+                    let bungus = buffered / output.amount;
+                    if bungus == 0 {
+                        possible_crafts = 0;
+                        break;
+                    }
+
+                    possible_crafts = possible_crafts.min(bungus);
                 }
             }
+
+
         }
     }
 }
