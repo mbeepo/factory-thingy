@@ -1,4 +1,4 @@
-use crate::{pipeline::{machine::MachineKind, IoPort}, ItemType};
+use crate::{pipeline::{machine::MachineKind}, ItemType};
 use bevy::prelude::*;
 
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
@@ -43,7 +43,7 @@ impl Recipe {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Resource)]
 pub struct Recipes {
     pub inner: Vec<Recipe>,
 }
@@ -55,7 +55,7 @@ impl Recipes {
             Recipe::producer_recipe(ItemStack::new(ItemType::Output, 1), 10),
             Recipe::transformer_recipe(ItemStack::new(ItemType::Input, 5), ItemStack::new(ItemType::Storage, 1), 20),
             Recipe::transformer_recipe(ItemStack::new(ItemType::Output, 5), ItemStack::new(ItemType::Producer, 1), 20),
-            Recipe::combinator_recipe((ItemStack::new(ItemType::Input, 5), ItemStack::new(ItemType::Output, 5)), ItemStack::new(ItemType::Transformer, 1), 60),
+            Recipe::combinator_recipe((ItemStack::new(ItemType::Input, 5), ItemStack::new(ItemType::Output, 5)), ItemStack::new(ItemType::Transformer, 1), 20),
             Recipe::combinator_recipe((ItemStack::new(ItemType::Transformer, 1), ItemStack::new(ItemType::Input, 5)), ItemStack::new(ItemType::Combinator, 1), 60),
             Recipe::combinator_recipe((ItemStack::new(ItemType::Transformer, 1), ItemStack::new(ItemType::Output, 5)), ItemStack::new(ItemType::Separator, 1), 60),
         ] }

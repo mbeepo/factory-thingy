@@ -3,22 +3,22 @@ use std::{fmt::Debug, ops::{BitOr, BitOrAssign}};
 use bevy::ecs::component::Component;
 use bevy::prelude::*;
 
-use crate::{pipeline::{recipe::{ItemStack, Recipe}, IoPort, PipelineId}, ItemType};
+use crate::pipeline::{recipe::Recipe, IoBuffer};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum MachinePushError {
-    NoSpace,
-    InvalidInput,
-}
+// #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+// pub enum MachinePushError {
+//     NoSpace,
+//     InvalidInput,
+// }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum MachineBindError {
-    NoFreeOutputs,
-    NoFreeInputs,
-    InputDoesNotExist,
-    OutputDoesNotExist,
-    InvalidInput,
-}
+// #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+// pub enum MachineBindError {
+//     NoFreeOutputs,
+//     NoFreeInputs,
+//     InputDoesNotExist,
+//     OutputDoesNotExist,
+//     InvalidInput,
+// }
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MachineKind {
@@ -34,7 +34,6 @@ pub enum MachineStatus {
     Working(Working),
     Full,
     LacksInput,
-    Ready,
     CraftsFinished(u64),
     Idle,
 }
@@ -70,37 +69,99 @@ impl BitOrAssign for CraftStatus {
 }
 
 #[derive(Component, Clone, Debug)]
-#[relationship_target(relationship = MachineOutputNew)]
-pub struct MachineInputNew(Vec<Entity>);
-
-#[derive(Component, Clone, Debug)]
-#[relationship(relationship_target = MachineInputNew)]
-pub struct MachineOutputNew(Entity);
-
-#[derive(Component, Clone, Debug)]
-pub struct OutputBuffers(Vec<IoPort>);
-
-#[derive(Component, Clone, Debug)]
-pub struct InputBuffers(Vec<IoPort>);
+#[relationship_target(relationship = InputPort)]
+/// Connects a MachineCoupling to a Machine
+/// 
+/// Entries relate 1:1 with those in the connected Machine's InputBuffers
+pub struct InputBank(Vec<Entity>);
 
 #[derive(Component, Clone, Copy, Debug)]
-pub struct Mult(u64);
+#[relationship(relationship_target = InputBank)]
+/// Connects a MachineCoupling to an InputBank
+pub struct InputPort(pub Entity);
 
-#[derive(Clone, Debug)]
-pub struct Machine {
-    pub kind: MachineKind,
-    pub output_id: Option<PipelineId>,
-    recipe: Recipe,
-    status: MachineStatus,
-    pub input_ports: [Option<IoPort>; 4],
-    pub output_ports: [Option<IoPort>; 4],
-    pub mult: u64,
+#[derive(Component, Clone, Debug)]
+#[relationship_target(relationship = OutputPort)]
+/// Connects a Machine to an MachineCoupling
+/// 
+/// Entries relate 1:1 with those in the connected Machine's OutputBuffers
+pub struct OutputBank(Vec<Entity>);
+
+#[derive(Component, Clone, Debug)]
+#[relationship(relationship_target = OutputBank)]
+/// Connects an OutputBank to a MachineCoupling
+pub struct OutputPort(pub Entity);
+
+#[derive(Bundle, Clone, Debug)]
+pub struct MachineCoupling {
+    pub input_port: InputPort,
+    pub output_port: OutputPort,
 }
 
-pub fn tick_machines(mut machine_query: Query<(&Recipe, &mut MachineStatus, Option<&Mult>)>) {
-    for(recipe, mut status, maybe_mult) in &mut machine_query {
+#[derive(Component, Clone, Debug)]
+pub struct InputBuffers(pub Vec<IoBuffer>);
+
+#[derive(Component, Clone, Debug)]
+pub struct OutputBuffers(pub Vec<IoBuffer>);
+
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Mult(pub u64);
+
+impl InputBank {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+}
+
+impl OutputBank {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+}
+
+#[derive(Bundle, Clone, Debug)]
+pub struct Machine {
+    pub kind: MachineKind,
+    pub input_bank: InputBank,
+    pub input_buffers: InputBuffers,
+    pub output_bank: OutputBank,
+    pub output_buffers: OutputBuffers,
+    pub recipe: Recipe,
+    pub status: MachineStatus,
+}
+
+#[derive(Bundle, Clone, Debug)]
+pub struct Producer {
+    pub output_bank: OutputBank,
+    pub output_buffers: OutputBuffers,
+    pub recipe: Recipe,
+    pub status: MachineStatus,
+}
+
+// #[derive(Clone, Debug)]
+// pub struct Machine {
+//     pub kind: MachineKind,
+//     pub output_id: Option<PipelineId>,
+//     recipe: Recipe,
+//     status: MachineStatus,
+//     pub input_ports: [Option<IoBuffer>; 4],
+//     pub output_ports: [Option<IoBuffer>; 4],
+//     pub mult: u64,
+// }
+
+pub fn tick_crafts(mut machine_query: Query<(&Recipe, &mut MachineStatus, Option<&Mult>)>) {
+    for entity in &mut machine_query {
+        let (recipe, mut status, maybe_mult) = entity;
         match *status {
-            MachineStatus::Working(Working { ticks_remaining: ref mut ticks_remaining, amount}) => {
+            MachineStatus::Working(Working { ref mut ticks_remaining, amount}) => {
                 if let Some(mult) = maybe_mult {
                     if mult.0 > *ticks_remaining {
                         *ticks_remaining = (mult.0 - *ticks_remaining) / recipe.ticks.max(1);
@@ -121,36 +182,50 @@ pub fn tick_machines(mut machine_query: Query<(&Recipe, &mut MachineStatus, Opti
     }
 }
 
-pub fn try_craft_new(mut machine_query: Query<(&MachineOutputNew, &mut OutputBuffers, &mut MachineStatus, &Recipe)>) {
-    for (dest, mut outputs, mut status, recipe) in machine_query {
+pub fn craft(mut machine_query: Query<(&mut OutputBuffers, &mut MachineStatus, &Recipe)>) {
+    for (mut buffers, mut status, recipe, num_crafts) in machine_query.iter_mut().filter_map(|(buffers, status, recipe)| {
         if let MachineStatus::CraftsFinished(num_crafts) = *status {
-            
+            Some((buffers, status, recipe, num_crafts))
+        } else {
+            None
         }
+    }) {
+        for item_stack in recipe.outputs.iter().filter_map(|o| *o) {
+            let buffer = buffers.0.iter_mut().find(|b| b.item_type == item_stack.item_type).expect(format!("No buffer for recipe output: {:?}", item_stack.item_type).as_ref());
+            // Buffers were checked for space during ready phase, just let it overflow here
+            buffer.buffer.current += item_stack.amount * num_crafts;
+            println!("Crafted {:?} x{}", item_stack.item_type, item_stack.amount * num_crafts);
+        }
+        *status = MachineStatus::Idle;
     }
 }
 
-pub fn ready_craft(mut machine_query: Query<(&mut InputBuffers, &OutputBuffers, &mut MachineStatus, &Recipe, Option<&Mult>)>) {
-    for (mut inputs, outputs, mut status, recipe, mult) in machine_query {
+pub fn ready_craft(mut machine_query: Query<(&mut InputBuffers, &OutputBuffers, &mut MachineStatus, &Recipe, Option<&Mult>)>, ) {
+    for (mut inputs, outputs, mut status, recipe, mult) in &mut machine_query {
         if *status != MachineStatus::Idle {
             continue;
         }
         let mut possible_crafts = mult.unwrap_or(&Mult(1)).0;
 
-        for output in recipe.outputs.iter().filter_map(|o| *o) {
+        for input in recipe.inputs.iter().filter_map(|i| *i) {
             let buffered = inputs.0.iter().fold(0, |acc, port| {
-                if port.item_type == output.item_type {
+                if port.item_type == input.item_type {
                     acc + port.buffer.current
                 } else {
                     acc
                 }
             });
 
-            let bungus = buffered / output.amount;
+            let bungus = buffered / input.amount;
             if bungus == 0 {
                 possible_crafts = 0;
                 break;
             }
 
+            possible_crafts = possible_crafts.min(bungus);
+        }
+
+        for output in recipe.outputs.iter().filter_map(|o| *o) {
             let bufferable = outputs.0.iter().fold(0, |acc, port| {
                 if port.item_type == output.item_type {
                     acc + port.buffer.remaining()
@@ -159,26 +234,41 @@ pub fn ready_craft(mut machine_query: Query<(&mut InputBuffers, &OutputBuffers, 
                 }
             });
 
-            let bungus2 = bufferable / output.amount;
-            if bungus2 == 0 {
+            let bungus = bufferable / output.amount;
+            if bungus == 0 {
                 possible_crafts = 0;
                 break;
             }
 
-            possible_crafts = possible_crafts.min(bungus).min(bungus2);
+            possible_crafts = possible_crafts.min(bungus);
+            println!("Crafting {:?} x{}", output.item_type, output.amount * possible_crafts);
         }
 
         for output in recipe.outputs.iter().filter_map(|o| *o) {
             let mut taken = output.amount * possible_crafts;
 
             for input in inputs.0.iter_mut().filter(|i| i.item_type == output.item_type) {
-                let takeable = taken.abs_diff(input.buffer.current);
+                let takeable = taken.min(input.buffer.current);
                 input.buffer.current -= takeable;
                 taken -= takeable;
+                if taken == 0 { break; }
             }
         }
 
         *status = MachineStatus::Working(Working { ticks_remaining: recipe.ticks, amount: possible_crafts });
+    }
+}
+
+pub fn push_outputs(mut src_query: Query<(&mut OutputBuffers, &OutputBank)>, coupling_query: Query<(&OutputPort, &InputPort)>, mut dest_query: Query<&mut InputBuffers>) {
+    for (mut output_buf, output_bank) in &mut src_query.iter_mut().filter(|(_, output_bank)| output_bank.len() > 0) {
+        for (idx, buf) in output_buf.0.iter_mut().filter(|buf| buf.buffer.current > 0).enumerate() {
+            let coupling = coupling_query.get(output_bank.0[idx]).unwrap();
+            let dest_buf = &mut dest_query.get_mut(coupling.1.0).unwrap().0[idx];
+            let pushable = dest_buf.buffer.remaining().min(buf.buffer.current);
+            
+            buf.buffer.current -= pushable;
+            dest_buf.buffer.current += pushable;
+        }
     }
 }
 
@@ -358,24 +448,24 @@ pub fn ready_craft(mut machine_query: Query<(&mut InputBuffers, &OutputBuffers, 
 //     }
 // }
 
-impl From<Recipe> for Machine {
-    fn from(value: Recipe) -> Self {
-        let mut input_ports = value.inputs.iter().map(|input| input.map(|item_stack| item_stack.item_type.into())).take(4);
-        let input_ports = [input_ports.next().flatten(), input_ports.next().flatten(), input_ports.next().flatten(), input_ports.next().flatten()];
-        let mut output_ports = value.outputs.iter().map(|output| output.map(|item_stack| item_stack.item_type.into())).take(4);
-        let output_ports = [output_ports.next().flatten(), output_ports.next().flatten(), output_ports.next().flatten(), output_ports.next().flatten()];
+// impl From<Recipe> for Machine {
+//     fn from(value: Recipe) -> Self {
+//         let mut input_ports = value.inputs.iter().map(|input| input.map(|item_stack| item_stack.item_type.into())).take(4);
+//         let input_ports = [input_ports.next().flatten(), input_ports.next().flatten(), input_ports.next().flatten(), input_ports.next().flatten()];
+//         let mut output_ports = value.outputs.iter().map(|output| output.map(|item_stack| item_stack.item_type.into())).take(4);
+//         let output_ports = [output_ports.next().flatten(), output_ports.next().flatten(), output_ports.next().flatten(), output_ports.next().flatten()];
 
-        Self {
-            kind: value.machine_kind,
-            output_id: None,
-            recipe: value,
-            status: MachineStatus::LacksInput,
-            input_ports,
-            output_ports,
-            mult: 1,
-        }
-    }
-}
+//         Self {
+//             kind: value.machine_kind,
+//             output_id: None,
+//             recipe: value,
+//             status: MachineStatus::LacksInput,
+//             input_ports,
+//             output_ports,
+//             mult: 1,
+//         }
+//     }
+// }
 
 const DEFAULT_BUFFER_SIZE: u64 = 50;
 
@@ -399,12 +489,12 @@ impl ItemBuffer {
     }
 }
 
-pub struct MachineOutput<'a> {
-    pub id: &'a mut Option<PipelineId>,
-    pub port: &'a mut Option<IoPort>,
-    pub item_type: ItemType,
-}
+// pub struct MachineOutput<'a> {
+//     pub id: &'a mut Option<PipelineId>,
+//     pub port: &'a mut Option<IoBuffer>,
+//     pub item_type: ItemType,
+// }
 
-pub struct MachineInput<'a> {
-    pub port: &'a mut Option<IoPort>,
-}
+// pub struct MachineInput<'a> {
+//     pub port: &'a mut Option<IoBuffer>,
+// }

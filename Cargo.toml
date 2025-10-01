@@ -12,6 +12,4 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = { version = "0.16.1", features = ["dynamic_linking"] }
-eframe = "0.32.3"
-egui = "0.32.3"
+bevy = { version = "0.17.0", features = ["dynamic_linking"] }

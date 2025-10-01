@@ -1,73 +1,66 @@
 {
-  description = "Rust development environment";
+  description = "bevy flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay.url = "github:oxalica/rust-overlay";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      nixpkgs,
+      rust-overlay,
+      flake-utils,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
-        # Read the file relative to the flake's root
-        overrides = (builtins.fromTOML (builtins.readFile (self + "/rust-toolchain.toml")));
-        libPath = with pkgs; lib.makeLibraryPath [
-          wayland-protocols
-          wayland
-          libxkbcommon
-          libGL
-          alsa-lib
-          libudev-zero
-        ];
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs {
+          inherit system overlays;
+        };
       in
       {
-        devShells.default = pkgs.mkShell rec {
-          nativeBuildInputs = [ pkgs.pkg-config ];
-          buildInputs = with pkgs; [
-            clang
-            llvmPackages.bintools
-            rustup
-            wayland-protocols
-            wayland
-            libxkbcommon
-            libGL
-            alsa-lib
-            libudev-zero
-          ];
-
-          RUSTC_VERSION = overrides.toolchain.channel;
-          
-          # https://github.com/rust-lang/rust-bindgen#environment-variables
-          LIBCLANG_PATH = pkgs.lib.makeLibraryPath [ pkgs.llvmPackages_latest.libclang.lib ];
-          
-          shellHook = ''
-            export PATH=$PATH:''${CARGO_HOME:-~/.cargo}/bin
-            export PATH=$PATH:''${RUSTUP_HOME:-~/.rustup}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/
-          '';
-
-          # Add precompiled library to rustc search path
-          RUSTFLAGS = (builtins.map (a: ''-L ${a}/lib'') [
-            # add libraries here (e.g. pkgs.libvmi)
-          ]);
-          
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (buildInputs ++ nativeBuildInputs);
-
-          
-          # Add glibc, clang, glib, and other headers to bindgen search path
-          BINDGEN_EXTRA_CLANG_ARGS =
-          # Includes normal include path
-          (builtins.map (a: ''-I"${a}/include"'') [
-            # add dev libraries here (e.g. pkgs.libvmi.dev)
-            pkgs.glibc.dev
-          ])
-          # Includes with special directory paths
-          ++ [
-            ''-I"${pkgs.llvmPackages_latest.libclang.lib}/lib/clang/${pkgs.llvmPackages_latest.libclang.version}/include"''
-            ''-I"${pkgs.glib.dev}/include/glib-2.0"''
-            ''-I${pkgs.glib.out}/lib/glib-2.0/include/''
-          ];
-        };
+        devShells.default =
+          with pkgs;
+          mkShell {
+            buildInputs =
+              [
+                # Rust dependencies
+                (rust-bin.stable.latest.default.override { extensions = [ "rust-src" ]; })
+                pkg-config
+              ]
+              ++ lib.optionals (lib.strings.hasInfix "linux" system) [
+                # for Linux
+                # Audio (Linux only)
+                alsa-lib
+                # Cross Platform 3D Graphics API
+                vulkan-loader
+                # For debugging around vulkan
+                vulkan-tools
+                # Other dependencies
+                libudev-zero
+                xorg.libX11
+                xorg.libXcursor
+                xorg.libXi
+                xorg.libXrandr
+                libxkbcommon
+                wayland-protocols
+                wayland
+              ];
+            RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+            LD_LIBRARY_PATH = lib.makeLibraryPath [
+              vulkan-loader
+              xorg.libX11
+              xorg.libXi
+              xorg.libXcursor
+              libxkbcommon
+              wayland-protocols
+              wayland
+            ];
+          };
       }
     );
 }
