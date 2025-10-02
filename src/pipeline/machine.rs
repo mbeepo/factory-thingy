@@ -38,34 +38,22 @@ pub enum MachineStatus {
     Idle,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Working {
-    ticks_remaining: u64,
-    amount: u64,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CraftStatus {
-    Incomplete,
-    Complete,
-}
-
-impl BitOr for CraftStatus {
-    type Output = Self;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        if self == CraftStatus::Complete || rhs == CraftStatus::Complete {
-            CraftStatus::Complete
-        } else {
-            CraftStatus::Incomplete
+impl From<MachineStatus> for String {
+    fn from(value: MachineStatus) -> Self {
+        match value {
+            MachineStatus::Working(Working { ticks_remaining, amount }) => format!("Crafting x{amount}: {ticks_remaining} left"),
+            MachineStatus::Full => String::from("Full"),
+            MachineStatus::Idle => String::from("Idle"),
+            MachineStatus::LacksInput => String::from("Waiting for input"),
+            _ => String::new(),
         }
     }
 }
 
-impl BitOrAssign for CraftStatus {
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = *self | rhs
-    }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Working {
+    ticks_remaining: u64,
+    amount: u64,
 }
 
 #[derive(Component, Clone, Debug)]
@@ -161,6 +149,9 @@ pub struct InputBufferText(pub Entity);
 
 #[derive(Component, Clone, Debug)]
 pub struct OutputBufferText(pub Entity);
+
+#[derive(Component, Clone, Debug)]
+pub struct StatusText(pub Entity);
 
 pub fn tick_crafts(mut machine_query: Query<(&mut MachineStatus)>) {
     for entity in &mut machine_query {

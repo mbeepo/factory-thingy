@@ -1,4 +1,4 @@
-use crate::pipeline::{machine::{craft, push_outputs, ready_craft, tick_crafts, BufferType, InputBank, InputBufferText, InputBuffers, InputPort, Machine, MachineCoupling, MachineKind, MachineStatus, Mult, OutputBank, OutputBufferText, OutputBuffers, OutputPort, Producer}, recipe::{Recipe, Recipes}, IoBuffer};
+use crate::pipeline::{machine::{craft, push_outputs, ready_craft, tick_crafts, BufferType, InputBank, InputBufferText, InputBuffers, InputPort, Machine, MachineCoupling, MachineKind, MachineStatus, Mult, OutputBank, OutputBufferText, OutputBuffers, OutputPort, Producer, StatusText}, recipe::{Recipe, Recipes}, IoBuffer};
 use bevy::{ecs::relationship::RelatedSpawnerCommands, prelude::*};
 
 mod pipeline;
@@ -45,8 +45,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
         .add_systems(FixedUpdate, (ready_craft, tick_crafts, craft, push_outputs, update_labels).chain())
-        // .insert_resource(Time::<Fixed>::from_seconds(0.1))
-        .insert_resource(Time::<Fixed>::from_seconds(0.001))
+        .insert_resource(Time::<Fixed>::from_seconds(0.1))
         .insert_resource(recipes)
         .run();
 }
@@ -96,15 +95,16 @@ pub fn create_label(builder: &mut RelatedSpawnerCommands<'_, ChildOf>, name: &st
         }
     ).with_children(|builder| {
         builder.spawn(Text::new(name));
+        let status_text = StatusText(builder.spawn(Text::new("")).id());
         let input_buffer_text = InputBufferText(builder.spawn(Text::new("")).id());
         let output_buffer_text = OutputBufferText(builder.spawn(Text::new("")).id());
 
-        builder.commands().entity(entity).insert((input_buffer_text, output_buffer_text));
+        builder.commands().entity(entity).insert((status_text, input_buffer_text, output_buffer_text));
     });
 }
 
-pub fn update_labels(machine_query: Query<(&InputBufferText, &OutputBufferText, Option<&InputBuffers>, Option<&OutputBuffers>)>, mut label_query: Query<&mut Text>) {
-    for (input_label, output_label, input_buf, output_buf) in machine_query {
+pub fn update_labels(machine_query: Query<(&InputBufferText, &OutputBufferText, Option<&InputBuffers>, Option<&OutputBuffers>, &StatusText, &MachineStatus)>, mut label_query: Query<&mut Text>) {
+    for (input_label, output_label, input_buf, output_buf, status_label, status) in machine_query {
         if let Some(input_buf) = input_buf {
             let mut input_label = label_query.get_mut(input_label.0).unwrap();
             let mut text = String::from("Input");
@@ -124,6 +124,9 @@ pub fn update_labels(machine_query: Query<(&InputBufferText, &OutputBufferText, 
 
             output_label.0 = text;
         }
+
+        let mut status_label = label_query.get_mut(status_label.0).unwrap();
+        status_label.0 = String::from(*status);
     }
 }
 
@@ -144,10 +147,7 @@ pub fn spawn_machine(commands: &mut Commands, recipe: Recipe) -> Entity {
 
     if input_buffers.0.len() > 0 {
         let input_bank = InputBank::with_capacity(input_buffers.0.len());
-
-        let input_buffers = commands.spawn(input_buffers).id();
-        let input_bank = commands.spawn(input_bank).id();
-        commands.entity(machine).add_children(&[input_buffers, input_bank]);
+        commands.entity(machine).insert((input_buffers, input_bank));
     }
 
     let output_buffers = OutputBuffers(recipe.outputs.iter().filter_map(|output| {
@@ -160,10 +160,7 @@ pub fn spawn_machine(commands: &mut Commands, recipe: Recipe) -> Entity {
 
     if output_buffers.0.len() > 0 {
         let output_bank = OutputBank::with_capacity(output_buffers.0.len());
-
-        let output_buffers = commands.spawn(output_buffers).id();
-        let output_bank = commands.spawn(output_bank).id();
-        commands.entity(machine).add_children(&[output_buffers, output_bank]);
+        commands.entity(machine).insert((output_buffers, output_bank));
     }
 
     machine
