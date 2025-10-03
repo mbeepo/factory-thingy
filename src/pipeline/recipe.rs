@@ -37,10 +37,6 @@ impl Recipe {
     pub fn separator_recipe(input: ItemStack, outputs: (ItemStack, ItemStack), ticks: u64) -> Self {
         Self { machine_kind: MachineKind::Separator, ticks, inputs: [Some(input), None, None, None], outputs: [Some(outputs.0), Some(outputs.1), None, None] }
     }
-
-    pub fn storage_recipe() -> Self {
-        Self { machine_kind: MachineKind::Storage, ticks: 0, inputs: [None; 4], outputs: [None; 4] }
-    }
 }
 
 #[derive(Clone, Debug, Resource)]
@@ -72,7 +68,6 @@ impl Recipes {
     pub fn get_combinator(&self, output: ItemType) -> Option<Recipe> {
         self.inner.iter().find_map(|e| {
             if e.machine_kind == MachineKind::Combinator
-            // && (e.inputs[0].map(|inner| inner.item_type), e.inputs[1].map(|inner| inner.item_type)) == (Some(inputs.0), Some(inputs.1))
             && e.outputs[0].map(|inner| inner.item_type) == Some(output) { Some(*e) } else { None }})
     }
 
@@ -80,6 +75,5 @@ impl Recipes {
         self.inner.iter().find_map(|e| {
             if e.machine_kind == MachineKind::Combinator
             && (e.outputs[0].map(|inner| inner.item_type), e.outputs[1].map(|inner| inner.item_type)) == (Some(outputs.0), Some(outputs.1)) { Some(*e) } else { None }})
-            // && e.inputs[0].map(|inner| inner.item_type) == Some(input) { Some(*e) } else { None }})
     }
 }

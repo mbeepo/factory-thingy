@@ -1,4 +1,4 @@
-use crate::pipeline::{machine::{craft, push_outputs, ready_craft, tick_crafts, BufferType, InputBank, InputBufferText, InputBuffers, InputPort, Machine, MachineCoupling, MachineKind, MachineStatus, Mult, OutputBank, OutputBufferText, OutputBuffers, OutputPort, Producer, StatusText}, recipe::{Recipe, Recipes}, IoBuffer};
+use crate::pipeline::{machine::{craft, push_outputs, ready_craft, tick_crafts, BufferType, InputBank, InputBufferText, InputBuffers, InputPort, MachineCoupling, MachineStatus, OutputBank, OutputBufferText, OutputBuffers, OutputPort, StatusText}, recipe::{Recipe, Recipes}};
 use bevy::{ecs::relationship::RelatedSpawnerCommands, prelude::*};
 
 mod pipeline;

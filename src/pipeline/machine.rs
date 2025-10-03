@@ -1,6 +1,6 @@
 use std::{fmt::Debug, ops::{BitOr, BitOrAssign}};
 
-use bevy::ecs::component::Component;
+use bevy::ecs::{component::Component, entity::UniqueEntityVec};
 use bevy::prelude::*;
 
 use crate::{pipeline::{recipe::Recipe, IoBuffer}, ItemType};
@@ -59,8 +59,6 @@ pub struct Working {
 #[derive(Component, Clone, Debug)]
 #[relationship_target(relationship = InputPort)]
 /// Connects a MachineCoupling to a Machine
-/// 
-/// Entries relate 1:1 with those in the connected Machine's InputBuffers
 pub struct InputBank(Vec<Entity>);
 
 #[derive(Component, Clone, Copy, Debug)]
@@ -71,8 +69,6 @@ pub struct InputPort(pub Entity);
 #[derive(Component, Clone, Debug)]
 #[relationship_target(relationship = OutputPort)]
 /// Connects a Machine to an MachineCoupling
-/// 
-/// Entries relate 1:1 with those in the connected Machine's OutputBuffers
 pub struct OutputBank(Vec<Entity>);
 
 #[derive(Component, Clone, Debug)]
@@ -238,12 +234,13 @@ pub fn ready_craft(mut machine_query: Query<(Option<&mut InputBuffers>, &OutputB
     }
 }
 
-pub fn push_outputs(mut src_query: Query<(&mut OutputBuffers, &OutputBank)>, coupling_query: Query<(&OutputPort, &InputPort)>, mut dest_query: Query<&mut InputBuffers>) {
+pub fn push_outputs(mut src_query: Query<(&mut OutputBuffers, &OutputBank)>, coupling_query: Query<(&InputPort, &BufferType)>, mut dest_query: Query<&mut InputBuffers>) {
     for (mut output_buf, output_bank) in &mut src_query.iter_mut().filter(|(_, output_bank)| output_bank.len() > 0) {
-        for (idx, buf) in output_buf.0.iter_mut().filter(|buf| buf.buffer.current > 0).enumerate() {
-            let coupling = coupling_query.get(output_bank.0[idx]).unwrap();
-            let mut dest_buf = dest_query.get_mut(coupling.1.0).unwrap();
-            let dest_buf = dest_buf.0.iter_mut().filter(|b| b.item_type == buf.item_type).next().unwrap();
+        let couplings: Vec<(&InputPort, &BufferType)> = output_bank.iter().filter_map(|entity| coupling_query.get(entity).ok()).collect();
+        for buf in output_buf.0.iter_mut().filter(|buf| buf.buffer.current > 0) {
+            let Some(coupling) = couplings.iter().find(|(_, BufferType(item_type))| *item_type == buf.item_type) else { continue };
+            let mut dest_buf = dest_query.get_mut(coupling.0.0).unwrap();
+            let Some(dest_buf) = dest_buf.0.iter_mut().find(|b| b.item_type == buf.item_type) else { continue };
             let pushable = dest_buf.buffer.remaining().min(buf.buffer.current);
             
             buf.buffer.current -= pushable;
