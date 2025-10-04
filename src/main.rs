@@ -52,52 +52,59 @@ fn main() {
 
 fn setup(mut commands: Commands, recipes: Res<Recipes>) {
     let producer1 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Input).unwrap());
-    let producer2 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Input).unwrap());
-    let producer3 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Output).unwrap());
+    let producer2 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Output).unwrap());
+    let producer3 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Input).unwrap());
     let combinator1 = spawn_machine(&mut commands, recipes.get_combinator(ItemType::Transformer).unwrap());
     let combinator2 = spawn_machine(&mut commands, recipes.get_combinator(ItemType::Combinator).unwrap());
 
     bind_output(&mut commands, producer1, combinator1, ItemType::Input);
-    bind_output(&mut commands, producer2, combinator2, ItemType::Input);
-    bind_output(&mut commands, producer3, combinator1, ItemType::Output);
+    bind_output(&mut commands, producer3, combinator2, ItemType::Input);
+    bind_output(&mut commands, producer2, combinator1, ItemType::Output);
     bind_output(&mut commands, combinator1, combinator2, ItemType::Transformer);
 
     commands.spawn(Camera2d);
-    commands
-        .spawn(
-            Node {
-                // fill the entire window
-                width: percent(100),
-                height: percent(100),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: UiRect::all(px(5)),
-                ..Default::default()
-            }
-        )
-        .with_children(|builder| {
-            create_label(builder, "Producer", producer1);
-            create_label(builder, "Producer", producer2);
-            create_label(builder, "Combinator", combinator1);
-            create_label(builder, "Producer", producer3);
-            create_label(builder, "Combinator", combinator2);
-        });
+
+    const WIDTH: f32 = 200.0;
+    const HEIGHT: f32 = 150.0;
+    create_label(&mut commands, "Producer", producer1, Vec2::new(WIDTH*0.0, HEIGHT*0.0), Vec2::new(WIDTH, HEIGHT));
+    create_label(&mut commands, "Producer", producer2, Vec2::new(WIDTH*0.0, HEIGHT*1.5), Vec2::new(WIDTH, HEIGHT));
+    create_label(&mut commands, "Combinator", combinator1, Vec2::new(WIDTH*1.5, HEIGHT*0.75), Vec2::new(WIDTH, HEIGHT));
+    create_label(&mut commands, "Producer", producer3, Vec2::new(WIDTH*1.5, HEIGHT*2.25), Vec2::new(WIDTH, HEIGHT));
+    create_label(&mut commands, "Combinator", combinator2, Vec2::new(WIDTH*3.0, HEIGHT*1.5), Vec2::new(WIDTH, HEIGHT));
 }
 
-pub fn create_label(builder: &mut RelatedSpawnerCommands<'_, ChildOf>, name: &str, entity: Entity) {
-    builder.spawn(
+pub fn create_label(commands: &mut Commands, name: &str, entity: Entity, position: Vec2, size: Vec2) {
+    commands.spawn((
         Node {
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             padding: UiRect::all(px(5)),
             row_gap: px(5),
+            left: px(position.x),
+            top: px(position.y),
+            width: px(size.x),
+            height: px(size.y),
             ..Default::default()
-        }
-    ).with_children(|builder| {
-        builder.spawn(Text::new(name));
-        let status_text = StatusText(builder.spawn(Text::new("")).id());
-        let input_buffer_text = InputBufferText(builder.spawn(Text::new("")).id());
-        let output_buffer_text = OutputBufferText(builder.spawn(Text::new("")).id());
+        },
+        BackgroundColor(Color::BLACK),
+        BorderRadius::all(px(5)),
+    )).with_children(|builder| {
+        builder.spawn((Text::new(name), TextFont {
+            font_size: 12.0,
+            ..default()
+        }));
+        let status_text = StatusText(builder.spawn((Text::new(""), TextFont {
+            font_size: 12.0,
+            ..default()
+        })).id());
+        let input_buffer_text = InputBufferText(builder.spawn((Text::new(""), TextFont {
+            font_size: 12.0,
+            ..default()
+        })).id());
+        let output_buffer_text = OutputBufferText(builder.spawn((Text::new(""), TextFont {
+            font_size: 12.0,
+            ..default()
+        })).id());
 
         builder.commands().entity(entity).insert((status_text, input_buffer_text, output_buffer_text));
     });
