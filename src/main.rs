@@ -1,5 +1,5 @@
-use crate::pipeline::{machine::{craft, push_outputs, ready_craft, tick_crafts, BufferType, InputBank, InputBufferText, InputBuffers, InputPort, MachineCoupling, MachineStatus, OutputBank, OutputBufferText, OutputBuffers, OutputPort, StatusText}, recipe::{Recipe, Recipes}};
-use bevy::{ecs::relationship::RelatedSpawnerCommands, prelude::*};
+use crate::pipeline::{machine::{craft, push_outputs, ready_craft, tick_crafts, BufferType, InputBank, InputBufferText, InputBuffers, InputConnector, MachineCoupling, MachineInput, MachineOutput, MachineStatus, OutputBank, OutputBufferText, OutputBuffers, StatusText}, recipe::{Recipe, Recipes}};
+use bevy::prelude::*;
 
 mod pipeline;
 
@@ -14,32 +14,12 @@ pub enum ItemType {
     Output,
 }
 
+const WIDTH: f32 = 200.0;
+const HEIGHT: f32 = 150.0;
+
 // fn main() -> eframe::Result {
 fn main() {
     let recipes = Recipes::init();
-
-    // Our application state:
-    // let mut factory: Vec<pipeline::Pipeline> = Vec::with_capacity(4);
-    // {
-    //     let mut pipeline1 = Pipeline::with_capacity(3);
-    //     let producer1 = pipeline1.push(recipes.get_producer(ItemType::Output).unwrap().into());
-    //     let producer2 = pipeline1.push(recipes.get_producer(ItemType::Input).unwrap().into());
-    //     let producer3 = pipeline1.push(recipes.get_producer(ItemType::Input).unwrap().into());
-    //     let combinator1 = pipeline1.push(recipes.get_combinator(ItemType::Transformer).unwrap().into());
-    //     let combinator2 = pipeline1.push(recipes.get_combinator(ItemType::Combinator).unwrap().into());
-
-    //     pipeline1.bind_output(producer1, combinator1).unwrap();
-    //     pipeline1.bind_output(producer2, combinator1).unwrap();
-    //     pipeline1.bind_output(combinator1, combinator2).unwrap();
-    //     pipeline1.bind_output(producer3, combinator2).unwrap();
-
-    //     pipeline1.set_mult(&producer1, 5).unwrap();
-    //     pipeline1.set_mult(&producer2, 5).unwrap();
-    //     pipeline1.set_mult(&producer3, 5).unwrap();
-    //     pipeline1.set_mult(&combinator1, 5).unwrap();
-        
-    //     factory.push(pipeline1);
-    // }
 
     App::new()
         .add_plugins(DefaultPlugins)
@@ -51,21 +31,18 @@ fn main() {
 }
 
 fn setup(mut commands: Commands, recipes: Res<Recipes>) {
-    let producer1 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Input).unwrap());
-    let producer2 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Output).unwrap());
-    let producer3 = spawn_machine(&mut commands, recipes.get_producer(ItemType::Input).unwrap());
-    let combinator1 = spawn_machine(&mut commands, recipes.get_combinator(ItemType::Transformer).unwrap());
-    let combinator2 = spawn_machine(&mut commands, recipes.get_combinator(ItemType::Combinator).unwrap());
+    let producer1 = spawn_machine(&mut commands, "Producer", recipes.get_producer(ItemType::Input).unwrap(), Vec2::new(WIDTH*0.0, HEIGHT*0.0));
+    let producer2 = spawn_machine(&mut commands, "Producer", recipes.get_producer(ItemType::Output).unwrap(), Vec2::new(WIDTH*0.0, HEIGHT*1.5));
+    let producer3 = spawn_machine(&mut commands, "Producer", recipes.get_producer(ItemType::Input).unwrap(), Vec2::new(WIDTH*1.5, HEIGHT*2.25));
+    let combinator1 = spawn_machine(&mut commands, "Combinator", recipes.get_combinator(ItemType::Transformer).unwrap(), Vec2::new(WIDTH*1.5, HEIGHT*0.75));
+    let combinator2 = spawn_machine(&mut commands, "Combinator", recipes.get_combinator(ItemType::Combinator).unwrap(), Vec2::new(WIDTH*3.0, HEIGHT*1.5));
 
-    bind_output(&mut commands, producer1, combinator1, ItemType::Input);
-    bind_output(&mut commands, producer3, combinator2, ItemType::Input);
-    bind_output(&mut commands, producer2, combinator1, ItemType::Output);
-    bind_output(&mut commands, combinator1, combinator2, ItemType::Transformer);
+    // bind_output(&mut commands, producer1, combinator1, ItemType::Input);
+    // bind_output(&mut commands, producer3, combinator2, ItemType::Input);
+    // bind_output(&mut commands, producer2, combinator1, ItemType::Output);
+    // bind_output(&mut commands, combinator1, combinator2, ItemType::Transformer);
 
     commands.spawn(Camera2d);
-
-    const WIDTH: f32 = 200.0;
-    const HEIGHT: f32 = 150.0;
     create_label(&mut commands, "Producer", producer1, Vec2::new(WIDTH*0.0, HEIGHT*0.0), Vec2::new(WIDTH, HEIGHT));
     create_label(&mut commands, "Producer", producer2, Vec2::new(WIDTH*0.0, HEIGHT*1.5), Vec2::new(WIDTH, HEIGHT));
     create_label(&mut commands, "Combinator", combinator1, Vec2::new(WIDTH*1.5, HEIGHT*0.75), Vec2::new(WIDTH, HEIGHT));
@@ -79,6 +56,7 @@ pub fn create_label(commands: &mut Commands, name: &str, entity: Entity, positio
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
             padding: UiRect::all(px(5)),
+            margin: UiRect::all(px(5)),
             row_gap: px(5),
             left: px(position.x),
             top: px(position.y),
@@ -137,12 +115,13 @@ pub fn update_labels(machine_query: Query<(&InputBufferText, &OutputBufferText, 
     }
 }
 
-pub fn spawn_machine(commands: &mut Commands, recipe: Recipe) -> Entity {
+pub fn spawn_machine(commands: &mut Commands, name: &str, recipe: Recipe, position: Vec2) -> Entity {
     let machine = commands.spawn((
         recipe.machine_kind,
         recipe,
         MachineStatus::Idle,
     )).id();
+    create_label(commands, name, machine, position, Vec2::new(WIDTH, HEIGHT));
 
     let input_buffers = InputBuffers(recipe.inputs.iter().filter_map(|input| {
         if let Some(input) = input {
@@ -154,7 +133,18 @@ pub fn spawn_machine(commands: &mut Commands, recipe: Recipe) -> Entity {
 
     if input_buffers.0.len() > 0 {
         let input_bank = InputBank::with_capacity(input_buffers.0.len());
-        commands.entity(machine).insert((input_buffers, input_bank));
+        commands.entity(machine).with_related_entities::<MachineInput>(|spawner| {
+            for (i, buf) in input_buffers.0.iter().enumerate() {
+                spawner.spawn((BufferType(buf.item_type), Node {
+                    position_type: PositionType::Relative,
+                    left: px(position.x),
+                    top: px(position.y + 100.0 + 20.0*(i as f32)),
+                    width: px(10),
+                    height: px(10),
+                    ..default()
+                }, BackgroundColor(Color::linear_rgb(0.25, 0.5, 1.0)), BorderRadius::MAX));
+            }
+        }).insert((input_buffers, input_bank));
     }
 
     let output_buffers = OutputBuffers(recipe.outputs.iter().filter_map(|output| {
@@ -167,12 +157,23 @@ pub fn spawn_machine(commands: &mut Commands, recipe: Recipe) -> Entity {
 
     if output_buffers.0.len() > 0 {
         let output_bank = OutputBank::with_capacity(output_buffers.0.len());
-        commands.entity(machine).insert((output_buffers, output_bank));
+        commands.entity(machine).with_related_entities::<MachineOutput>(|spawner| {
+            for (i, buf) in output_buffers.0.iter().enumerate() {
+                spawner.spawn((BufferType(buf.item_type), Node {
+                    position_type: PositionType::Relative,
+                    left: px(position.x + WIDTH),
+                    top: px(position.y + 100.0 + 20.0*(i as f32)),
+                    width: px(10),
+                    height: px(10),
+                    ..default()
+                }, BackgroundColor(Color::linear_rgb(1.0, 0.5, 0.0)), BorderRadius::MAX));
+            }
+        }).insert((output_buffers, output_bank));
     }
 
     machine
 }
 
-pub fn bind_output(commands: &mut Commands, src: Entity, dest: Entity, item_type: ItemType) {
-    commands.spawn(MachineCoupling { output_port: OutputPort(src), input_port: InputPort(dest), buffer_type: BufferType(item_type) });
-}
+// pub fn bind_output(commands: &mut Commands, src: Entity, dest: Entity, item_type: ItemType) {
+//     commands.spawn(MachineCoupling { output_port: MachineOutput(src), input_port: MachineInput(dest), buffer_type: BufferType(item_type) });
+// }

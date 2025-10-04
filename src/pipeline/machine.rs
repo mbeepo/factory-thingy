@@ -57,34 +57,69 @@ pub struct Working {
 }
 
 #[derive(Component, Clone, Debug)]
-#[relationship_target(relationship = InputPort)]
-/// Connects a MachineCoupling to a Machine
+#[relationship_target(relationship = MachineInput)]
+/// Connects a Machine to its InputConnectors
 pub struct InputBank(Vec<Entity>);
+
+impl InputBank {
+    pub fn get(&self) -> &Vec<Entity> {
+        &self.0
+    }
+}
 
 #[derive(Component, Clone, Copy, Debug)]
 #[relationship(relationship_target = InputBank)]
-/// Connects a MachineCoupling to an InputBank
-pub struct InputPort(pub Entity);
+/// Connects a Machin to an InputConnector
+pub struct MachineInput(pub Entity);
 
 #[derive(Component, Clone, Debug)]
-#[relationship_target(relationship = OutputPort)]
-/// Connects a Machine to an MachineCoupling
+#[relationship_target(relationship = MachineOutput)]
+/// Connects a Machine to its OutputConnectors
 pub struct OutputBank(Vec<Entity>);
+
+impl OutputBank {
+    pub fn get(&self) -> &Vec<Entity> {
+        &self.0
+    }
+}
 
 #[derive(Component, Clone, Debug)]
 #[relationship(relationship_target = OutputBank)]
-/// Connects an OutputBank to a MachineCoupling
-pub struct OutputPort(pub Entity);
+/// Connects a Machine to an OutputConnector
+pub struct MachineOutput(pub Entity);
 
 #[derive(Bundle, Clone, Debug)]
 pub struct MachineCoupling {
     pub input_port: InputPort,
     pub output_port: OutputPort,
-    pub buffer_type: BufferType,
 }
 
 #[derive(Component, Clone, Debug)]
 pub struct BufferType(pub ItemType);
+
+#[derive(Component, Clone, Debug)]
+#[relationship_target(relationship = OutputPort)]
+/// Connects an OutputConnector to an InputConnector
+pub struct InputPort(Entity);
+
+#[derive(Component, Clone, Debug)]
+#[relationship(relationship_target = InputPort)]
+/// Connects an OutputConnector to an InputConnector
+pub struct OutputPort(pub Entity);
+
+#[derive(Bundle, Clone, Debug)]
+/// Connects an OutputBank to an InputConnector
+pub struct OutputConnector {
+    pub machine: MachineOutput,
+    pub buffer_type: BufferType,
+}
+
+#[derive(Bundle, Clone, Debug)]
+/// Connects an OutputConnector to an InputBank
+pub struct InputConnector {
+    pub machine: MachineInput,
+    pub buffer_type: BufferType,
+}
 
 impl From<ItemType> for BufferType {
     fn from(value: ItemType) -> Self {
@@ -202,7 +237,7 @@ pub fn ready_craft(mut machine_query: Query<(Option<&mut InputBuffers>, &OutputB
             }
         }
 
-        for output in recipe.outputs.iter().filter_map(|o| *o) {
+        for output in recipe.outputs.iter().filter_map(|o: &Option<super::recipe::ItemStack>| *o) {
             let bufferable = outputs.0.iter().fold(0, |acc, port| {
                 if port.item_type == output.item_type {
                     acc + port.buffer.remaining()
@@ -234,9 +269,9 @@ pub fn ready_craft(mut machine_query: Query<(Option<&mut InputBuffers>, &OutputB
     }
 }
 
-pub fn push_outputs(mut src_query: Query<(&mut OutputBuffers, &OutputBank)>, coupling_query: Query<(&InputPort, &BufferType)>, mut dest_query: Query<&mut InputBuffers>) {
+pub fn push_outputs(mut src_query: Query<(&mut OutputBuffers, &OutputBank)>, coupling_query: Query<(&MachineInput, &BufferType)>, mut dest_query: Query<&mut InputBuffers>) {
     for (mut output_buf, output_bank) in &mut src_query.iter_mut().filter(|(_, output_bank)| output_bank.len() > 0) {
-        let couplings: Vec<(&InputPort, &BufferType)> = output_bank.iter().filter_map(|entity| coupling_query.get(entity).ok()).collect();
+        let couplings: Vec<(&MachineInput, &BufferType)> = output_bank.iter().filter_map(|entity| coupling_query.get(entity).ok()).collect();
         for buf in output_buf.0.iter_mut().filter(|buf| buf.buffer.current > 0) {
             let Some(coupling) = couplings.iter().find(|(_, BufferType(item_type))| *item_type == buf.item_type) else { continue };
             let mut dest_buf = dest_query.get_mut(coupling.0.0).unwrap();
